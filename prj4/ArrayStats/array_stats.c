@@ -10,8 +10,11 @@ asmlinkage long sys_array_stats(struct array_stats *stats, long data[], long siz
 
 	struct array_stats temp = {0, 0, 0};
 	long data = 0;
-	long result = 0;
 	int i = 0;
+	
+	if (size <= 0){
+		return -EINVAL;	
+	}	
 
 	while (i<size)
 	{
@@ -45,7 +48,7 @@ asmlinkage long sys_array_stats(struct array_stats *stats, long data[], long siz
 	{
 		return -EFAULT;
 	}
-	return result;
+	return 0;
 
 
 
