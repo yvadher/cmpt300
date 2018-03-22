@@ -15,24 +15,22 @@ asmlinkage long sys_process_ancestors(struct process_info info_array[],long size
 
 asmlinkage long sys_process_ancestors(struct process_info info_array[],long size,long *num_filled) {
 	//Error checks
-    if (size<=0) return -EINVAL;
+    	if (size<=0) return -EINVAL;
 	if (!info_array || !num_filled) return -EFAULT;
 
 	struct process_info process;
-	struct task_struct task_struct;
-	struct task_struct *task;
+	struct task_struct *task = current; // getting global current pointer
+	struct task_struct *prev;
 
 	struct list_head *list;
 	
 	long count=0;
 	int countChildren=0;
-	int count_sibling=0;
-	int i=0;
-	int j=0;	
+	int countSibling=0;	
 
-	for (task = current; task != &init_task; task = task->parent) {
-		
-		process.pid = (long)task->pid; 
+	do {
+	    	// do the process
+		process.pid = (long)task->pid;
 		printk("Process ID: %ld\n", process.pid);	
 
 		process.state = task->state;
@@ -41,32 +39,38 @@ asmlinkage long sys_process_ancestors(struct process_info info_array[],long size
 		memset(process.name, '\0', sizeof(process.name));
 		strcpy(process.name, task->comm);
 
-		printk("Process Name: %ld\n", process.name);
-		
+		printk("Process Name: %s\n", process.name);
+	
 
-		list_for_each(list, &current->children) {
+		list_for_each(list, &task->children) {
 			countChildren++;
 		}
-		list_for_each(list, &current->sibling) {
-			count_sibling++;
+		list_for_each(list, &task->sibling) {
+			countSibling++;
 		}
-		process.num_children = ;
-		process.num_siblings = count_sibling;	
+		process.num_children = countChildren;
+		process.num_siblings = countSibling;	
 
 		printk("Process numChildren: %ld\n", process.countChildren);			
-		
-		info_array[i] = process;
-		
+	
+		info_array[count] = process;
+	
 		if(i == size){
-			*num_filled = i;
+			*num_filled = count;
 			printk("Process numFilled: %ld\n", *num_filled);	
 			return 0;		
 		}
 
-		i++;
-	}
-	*num_filled = i;
+		count++;
+		
+	    	prev = task;
+	    	temp = task->parent;
+
+	} while (prev->pid != 0);
+
+
+	*num_filled = count;
 	printk("Process numFilled: %ld\n", *num_filled);	
 
 	return 0;
-}countChildren
+}
