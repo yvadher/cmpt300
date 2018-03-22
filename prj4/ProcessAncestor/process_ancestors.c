@@ -51,20 +51,22 @@ asmlinkage long sys_process_ancestors(struct process_info info_array[],long size
 		process.num_children = countChildren;
 		process.num_siblings = countSibling;	
 
-		printk("Process numChildren: %ld\n", process.countChildren);			
+		printk("Process numChildren: %ld\n", process.num_children);			
 	
 		info_array[count] = process;
-	
-		if(i == size){
+		
+		count++;		
+
+		if(count == size){
 			*num_filled = count;
 			printk("Process numFilled: %ld\n", *num_filled);	
 			return 0;		
 		}
 
-		count++;
+		
 		
 	    	prev = task;
-	    	temp = task->parent;
+	    	task = task->parent;
 
 	} while (prev->pid != 0);
 
