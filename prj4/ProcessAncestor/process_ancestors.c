@@ -3,10 +3,6 @@
 #include <linux/unistd.h>
 #include <linux/sched.h>
 #include <linux/cred.h>
-#include <linux/compiler.h>
-#include <asm/percpu.h>
-#include <asm-generic/errno-base.h>
-#include <linux/errno.h>
 #include <linux/string.h>
 
 
@@ -14,65 +10,68 @@ asmlinkage long sys_process_ancestors(struct process_info info_array[],long size
 
 
 asmlinkage long sys_process_ancestors(struct process_info info_array[],long size,long *num_filled) {
+
 	//Error checks
     	if (size<=0) return -EINVAL;
 	if (!info_array || !num_filled) return -EFAULT;
-
-	struct process_info process;
-	struct task_struct *task = current; // getting global current pointer
-	struct task_struct *prev;
-
-	struct list_head *list;
+	 
+	int counter= 0;
+	struct task_struct *task = current;	
 	
-	long count=0;
-	int countChildren=0;
-	int countSibling=0;	
-
-	do {
-	    	// do the process
-		process.pid = (long)task->pid;
-		printk("Process ID: %ld\n", process.pid);	
-
-		process.state = task->state;
-		printk("Process State: %ld\n", process.state);		
-
-		memset(process.name, '\0', sizeof(process.name));
-		strcpy(process.name, task->comm);
-
-		printk("Process Name: %s\n", process.name);
-	
-
-		list_for_each(list, &task->children) {
-			countChildren++;
-		}
-		list_for_each(list, &task->sibling) {
-			countSibling++;
-		}
-		process.num_children = countChildren;
-		process.num_siblings = countSibling;	
-
-		printk("Process numChildren: %ld\n", process.num_children);			
-	
-		info_array[count] = process;
+	while (counter < size){
+		struct process_info process;
 		
-		count++;		
-
-		if(count == size){
-			*num_filled = count;
-			printk("Process numFilled: %ld\n", *num_filled);	
+		process.pid = (long)task->pid; 
+		strncpy(process.name, task->comm, 16);
+		
+		process.state = (long) task->state;
+		process.uid = (long) task->cred->uid.val;
+		process.nvcsw = task->nvcsw;
+		process.nivcsw = task->nivcsw;
+		
+		//Finding childrens 
+		if (&current->children == NULL){
 			return 0;		
 		}
-
 		
+		long countChildren = 0;
+		struct task_struct *child_task;
+		struct list_head *children_list;
+		list_for_each(children_list, &task->children) {
+			child_task = list_entry(children_list, struct task_struct, children);
+			countChildren++;
+		}
+		process.num_children = countChildren;
+
+		//Finding a sibalings 
+		long countSibalings = 0;
+
+		if(&task->sibling == NULL) {
+			return 0;
+		}
+
+		struct task_struct *sibling_task;
+		struct list_head *sibling_list;
+		list_for_each(sibling_list, &task->sibling) {
+			sibling_task = list_entry(sibling_list, struct task_struct, sibling);
+			countSibalings++;
+		}
+
+		process.num_siblings = countSibalings;
+
+		//Break loop if tasks prent is itself 
+		if (task == task->parent){
+			info_array[counter] = process;
+			counter++;
+			break;		
+		}
+
+		task = task->parent;
+		info_array[counter] = process;
+		counter++;
 		
-	    	prev = task;
-	    	task = task->parent;
+	}
 
-	} while (prev->pid != 0);
-
-
-	*num_filled = count;
-	printk("Process numFilled: %ld\n", *num_filled);	
-
+	*num_filled = counter;
 	return 0;
 }
