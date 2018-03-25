@@ -8,70 +8,87 @@
 
 asmlinkage long sys_process_ancestors(struct process_info info_array[],long size,long *num_filled) ;
 
+//Helper functions
+struct process_info get_process_info(struct task_struct* this) {
+    struct process_info result;
+    struct list_head* ptr;
+
+    /* Assign trivial info. */
+    result.pid = this->pid;
+    memcpy(result.name, this->comm, ANCESTOR_NAME_LEN);  
+    result.state = this->state;
+    result.uid = this->cred->uid.val;
+    result.nvcsw = this->nvcsw;
+    result.nivcsw = this->nivcsw;
+
+	int count_children = 0;
+    list_for_each(ptr, &(this->children)) {
+    	++count_children;
+    }
+
+	int count_sibalings = 0;
+    list_for_each(ptr, &(this->sibling)) {
+    	++count_sibalings;
+    }
+
+    //Assign childrens and sibalings
+    result.num_children = temp_num_children;
+    result.num_siblings = temp_num_sibling;
+
+    return res;
+}
 
 asmlinkage long sys_process_ancestors(struct process_info info_array[],long size,long *num_filled) {
 
 	//Error checks
-    	if (size<=0) return -EINVAL;
+    if (size<=0) return -EINVAL;
 	if (!info_array || !num_filled) return -EFAULT;
 	 
-	int counter= 0;
-	struct task_struct *task = current;	
+	int filled_processes= 0;
+	struct task_struct *task = current; 
+	struct task_struct *prev;
+
+	struct process_info info_array_temp;
+	// Allocate memory
+    info_array_temp = kmalloc(sizeof (struct process_info) * size, GFP_KERNEL);
 	
-	while (counter < size){
-		struct process_info process;
-		
-		process.pid = (long)task->pid; 
-		strncpy(process.name, task->comm, 16);
-		
-		process.state = (long) task->state;
-		process.uid = (long) task->cred->uid.val;
-		process.nvcsw = task->nvcsw;
-		process.nivcsw = task->nivcsw;
-		
-		//Finding childrens 
-		if (&current->children == NULL){
-			return 0;		
-		}
-		
-		long countChildren = 0;
-		struct task_struct *child_task;
-		struct list_head *children_list;
-		list_for_each(children_list, &task->children) {
-			child_task = list_entry(children_list, struct task_struct, children);
-			countChildren++;
-		}
-		process.num_children = countChildren;
+	// Copy info_array from user to kernal space
+	int i;
+    for (i = 0; i < size; i++) {
+        if (copy_from_user(&info_array_temp[i], &info_array[i], sizeof (struct process_info))) {
+            kfree(info_array_temp);
+			printk("Safe memory violation in porcess ancestors. Cant copy the memory from user to kernal.\n");
+            return -EFAULT;
+        }
+    }
 
-		//Finding a sibalings 
-		long countSibalings = 0;
+	// fill info_array_temp with irrerating to processes
+	i = 0;
+	do {
+		info_array_temp[i] = get_process_info(task);
+		filled_processes++;
+		prev = task;
+		task= task->parent;
+		i++;
+	} while (i < size && task != prev);
 
-		if(&task->sibling == NULL) {
-			return 0;
-		}
 
-		struct task_struct *sibling_task;
-		struct list_head *sibling_list;
-		list_for_each(sibling_list, &task->sibling) {
-			sibling_task = list_entry(sibling_list, struct task_struct, sibling);
-			countSibalings++;
-		}
+	//Copy info_array_temp to user space
+	for (i = 0; i < filled_processes; i++) {
+        if (copy_to_user(&info_array[i], &info_array_temp[i], sizeof (struct process_info))) {
+            kfree(info_array_temp);
+			printk("Safe memory violation! Cant copy data to user space!");
+            return -EFAULT;
+        }
+    }
 
-		process.num_siblings = countSibalings;
+	/* Copy back the num_filed number with -EFAULT checks. */
+    if (copy_to_user(num_filled, filled_processes, sizeof (long))) {
+		kfree(info_array_temp);
+		printk("Safe memory violation! Cant copy data to user space!");
+        return -EFAULT;
+    }
 
-		//Break loop if tasks prent is itself 
-		if (task == task->parent){
-			info_array[counter] = process;
-			counter++;
-			break;		
-		}
-
-		task = task->parent;
-		info_array[counter] = process;
-		counter++;
-		
-	}
-
-	*num_filled = counter;
+	kfree(info_array_temp);
 	return 0;
 }
